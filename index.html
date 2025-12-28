@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CTX-432 | Gestão e Biointeligência</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+        body { font-family: 'Inter', sans-serif; transition: background 0.3s; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .scan-line { animation: scan 2s infinite linear; }
+        @keyframes scan { 0% { top: 0%; } 100% { top: 100%; } }
+        .active-tab-shadow { box-shadow: 0 4px 14px 0 rgba(217, 119, 6, 0.39); }
+    </style>
+</head>
+<body class="bg-stone-50 text-stone-900 pb-24">
+
+    <!-- Header com Status de Conexão Real -->
+    <header class="bg-stone-900 text-stone-100 p-6 shadow-xl border-b-4 border-amber-600 sticky top-0 z-50">
+        <div class="max-w-4xl mx-auto flex items-center justify-between">
+            <div>
+                <h1 class="text-2xl font-black tracking-tighter flex items-center gap-2">
+                    <i data-lucide="droplets" class="text-sky-400"></i> CTX-432
+                </h1>
+                <p id="connection-status" class="text-[10px] text-emerald-400 font-bold uppercase tracking-widest flex items-center gap-1">
+                    <span class="w-2 h-2 bg-emerald-500 rounded-full animate-ping"></span> Sistema Ativo
+                </p>
+            </div>
+            <div class="text-right">
+                <div id="unit-counter" class="text-amber-500 font-black text-xl leading-none">01</div>
+                <p class="text-[9px] text-stone-400 uppercase font-bold">Unidade Local</p>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-4xl mx-auto p-4 md:p-6 space-y-6">
+        
+        <!-- Manual de Voz Real (Web Speech API) -->
+        <div class="bg-white border-2 border-amber-100 p-4 rounded-3xl flex flex-col md:flex-row items-center gap-4 justify-between shadow-sm">
+            <div class="flex items-center gap-4">
+                <button onclick="speakInstruction()" id="voice-trigger" class="p-4 rounded-full bg-amber-600 text-white hover:scale-105 transition-transform shadow-lg shadow-amber-900/20">
+                    <i data-lucide="volume-2" id="speaker-icon"></i>
+                </button>
+                <div>
+                    <h4 class="text-sm font-black text-stone-800 uppercase">Guia Auditivo</h4>
+                    <p id="voice-status" class="text-[11px] text-stone-500">Clique para ouvir as instruções da fase atual.</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2 w-full md:w-auto">
+                <select id="lang-select" class="bg-stone-100 border-none text-xs font-bold py-3 px-4 rounded-2xl focus:ring-2 focus:ring-amber-500 flex-1 md:min-w-[150px]">
+                    <option value="pt-PT">Português</option>
+                    <option value="um">Umbundu (Simulado)</option>
+                    <option value="qu">Quimbundu (Simulado)</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Navegação -->
+        <div class="grid grid-cols-4 bg-stone-200/50 p-1.5 rounded-2xl gap-1 shadow-inner">
+            <button onclick="switchTab('inventory')" id="tab-inventory" class="tab-btn flex flex-col items-center py-3 rounded-xl text-[10px] font-black transition-all bg-white text-amber-700 active-tab-shadow">
+                <i data-lucide="package" class="mb-1"></i> MATERIAIS
+            </button>
+            <button onclick="switchTab('assembly')" id="tab-assembly" class="tab-btn flex flex-col items-center py-3 rounded-xl text-[10px] font-black transition-all text-stone-500">
+                <i data-lucide="trello" class="mb-1"></i> MONTAGEM
+            </button>
+            <button onclick="switchTab('kia')" id="tab-kia" class="tab-btn flex flex-col items-center py-3 rounded-xl text-[10px] font-black transition-all text-stone-500">
+                <i data-lucide="zap" class="mb-1"></i> TESTE KIA
+            </button>
+            <button onclick="switchTab('impact')" id="tab-impact" class="tab-btn flex flex-col items-center py-3 rounded-xl text-[10px] font-black transition-all text-stone-500">
+                <i data-lucide="map" class="mb-1"></i> REDE
+            </button>
+        </div>
+
+        <!-- Área de Conteúdo -->
+        <section id="content-area" class="min-h-[400px]">
+            <!-- Injetado via JS -->
+        </section>
+
+    </main>
+
+    <!-- Modal de Sucesso -->
+    <div id="success-modal" class="fixed inset-0 bg-stone-900/80 backdrop-blur-sm z-[100] hidden flex items-center justify-center p-6">
+        <div class="bg-white rounded-3xl p-8 max-w-sm w-full text-center space-y-4 shadow-2xl">
+            <div class="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
+                <i data-lucide="award" size="40"></i>
+            </div>
+            <h2 class="text-2xl font-black text-stone-900 leading-tight">Unidade CTX-432 Validada!</h2>
+            <p class="text-sm text-stone-500">A qualidade da água e a estrutura do filtro foram registadas com sucesso na rede KIA-Vox.</p>
+            <button onclick="closeModal()" class="w-full bg-stone-900 text-white font-bold py-4 rounded-2xl">Continuar</button>
+        </div>
+    </div>
+
+    <script>
+        // --- DATA & STATE ---
+        let activeTab = 'inventory';
+        let completedSteps = JSON.parse(localStorage.getItem('ctx432_steps')) || [];
+        let materialsOwned = JSON.parse(localStorage.getItem('ctx432_materials')) || [];
+
+        const materials = [
+            { id: 'm1', name: 'Recipiente 200L', info: 'Bombona limpa' },
+            { id: 'm2', name: 'Carvão Ativado', info: '4kg triturado' },
+            { id: 'm3', name: 'Areia de Quartzo', info: '6kg esterilizada' },
+            { id: 'm4', name: 'Pedra-pomes', info: '5kg granulada' },
+            { id: 'm5', name: 'Folhas Medicinais', info: '200g pó grosso' },
+            { id: 'm6', name: 'Malha Fina', info: '2 unidades' }
+        ];
+
+        const steps = [
+            { id: 1, name: 'Limpeza do Recipiente', desc: 'Lavar com água e sabão neutro' },
+            { id: 2, name: 'Base: Pedra-pomes', desc: 'Primeira camada mecânica' },
+            { id: 3, name: 'Purificação: Carvão', desc: 'Remoção de químicos e odor' },
+            { id: 4, name: 'Filtragem: Areia', desc: 'Retenção de micropartículas' },
+            { id: 5, name: 'Bio-Ação: Folhas', desc: 'Infusão bactericida natural' },
+            { id: 6, name: 'Vedação Superior', desc: 'Proteção contra contaminantes' }
+        ];
+
+        // --- CORE FUNCTIONS ---
+
+        function switchTab(tabId) {
+            activeTab = tabId;
+            render();
+            window.scrollTo(0, 0);
+        }
+
+        function toggleMaterial(id) {
+            if (materialsOwned.includes(id)) {
+                materialsOwned = materialsOwned.filter(m => m !== id);
+            } else {
+                materialsOwned.push(id);
+            }
+            localStorage.setItem('ctx432_materials', JSON.stringify(materialsOwned));
+            render();
+        }
+
+        function toggleStep(id) {
+            if (completedSteps.includes(id)) {
+                completedSteps = completedSteps.filter(s => s !== id);
+            } else {
+                completedSteps.push(id);
+            }
+            localStorage.setItem('ctx432_steps', JSON.stringify(completedSteps));
+            render();
+        }
+
+        // Síntese de Voz Real
+        function speakInstruction() {
+            const synth = window.speechSynthesis;
+            if (synth.speaking) {
+                synth.cancel();
+                return;
+            }
+
+            let text = "";
+            if (activeTab === 'inventory') {
+                text = "Para começar, confirme se tem o recipiente de 200 litros, o carvão, a areia, a pedra pomes e as folhas de moringa.";
+            } else if (activeTab === 'assembly') {
+                const nextStep = steps.find(s => !completedSteps.includes(s.id));
+                text = nextStep ? `Próximo passo: ${nextStep.name}. ${nextStep.desc}` : "Montagem concluída. Proceda para o teste de água.";
+            } else {
+                text = "Aguardando análise de pureza da água através da lente.";
+            }
+
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = document.getElementById('lang-select').value;
+            utterance.onstart = () => document.getElementById('speaker-icon').classList.add('animate-bounce');
+            utterance.onend = () => document.getElementById('speaker-icon').classList.remove('animate-bounce');
+            synth.speak(utterance);
+        }
+
+        // Validação Real por Lógica de Projeto
+        function runKiaScan() {
+            const isReady = completedSteps.length === steps.length;
+            const btn = document.getElementById('scan-btn');
+            
+            if (!isReady) {
+                btn.classList.add('bg-red-500');
+                btn.innerText = "ERRO: MONTAGEM INCOMPLETA";
+                setTimeout(() => render(), 2000);
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerHTML = `<i data-lucide="refresh-cw" class="animate-spin"></i> LENDO ESTRUTURA...`;
+            lucide.createIcons();
+
+            setTimeout(() => {
+                document.getElementById('success-modal').classList.remove('hidden');
+                btn.disabled = false;
+            }, 3000);
+        }
+
+        function closeModal() {
+            document.getElementById('success-modal').classList.add('hidden');
+            switchTab('impact');
+        }
+
+        // --- RENDER ENGINE ---
+
+        function render() {
+            // Update Tab UI
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('bg-white', 'text-amber-700', 'active-tab-shadow');
+                btn.classList.add('text-stone-500');
+            });
+            const active = document.getElementById(`tab-${activeTab}`);
+            active.classList.add('bg-white', 'text-amber-700', 'active-tab-shadow');
+
+            const container = document.getElementById('content-area');
+
+            if (activeTab === 'inventory') {
+                container.innerHTML = `
+                    <div class="space-y-4 animate-in fade-in duration-300">
+                        <div class="flex justify-between items-end">
+                            <h2 class="font-black text-xl uppercase italic">Stock Local</h2>
+                            <span class="text-xs font-bold text-stone-400">${materialsOwned.length}/${materials.length} PRONTO</span>
+                        </div>
+                        <div class="grid gap-3">
+                            ${materials.map(m => `
+                                <div onclick="toggleMaterial('${m.id}')" class="bg-white p-5 rounded-3xl border-2 transition-all cursor-pointer flex justify-between items-center ${materialsOwned.includes(m.id) ? 'border-amber-500 shadow-md' : 'border-stone-100'}">
+                                    <div>
+                                        <h4 class="font-bold text-stone-800">${m.name}</h4>
+                                        <p class="text-[10px] text-stone-500 uppercase font-bold tracking-widest">${m.info}</p>
+                                    </div>
+                                    <div class="w-8 h-8 rounded-full border-2 flex items-center justify-center ${materialsOwned.includes(m.id) ? 'bg-amber-500 border-amber-500 text-white' : 'border-stone-200'}">
+                                        ${materialsOwned.includes(m.id) ? '<i data-lucide="check" size="16"></i>' : ''}
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            } else if (activeTab === 'assembly') {
+                container.innerHTML = `
+                    <div class="space-y-4 animate-in slide-in-from-right-4 duration-300">
+                        <h2 class="font-black text-xl uppercase italic">Fluxo de Montagem</h2>
+                        <div class="relative pl-8 space-y-6 before:absolute before:left-3 before:top-2 before:bottom-2 before:w-0.5 before:bg-stone-200">
+                            ${steps.map(s => `
+                                <div onclick="toggleStep(${s.id})" class="relative cursor-pointer group">
+                                    <div class="absolute -left-8 top-1 w-6 h-6 rounded-full border-2 z-10 bg-white transition-colors ${completedSteps.includes(s.id) ? 'bg-emerald-500 border-emerald-500' : 'border-stone-300 group-hover:border-amber-500'}"></div>
+                                    <div class="bg-white p-4 rounded-2xl shadow-sm border border-stone-100">
+                                        <h4 class="font-bold text-sm ${completedSteps.includes(s.id) ? 'text-stone-400 line-through' : 'text-stone-800'}">${s.name}</h4>
+                                        <p class="text-[11px] text-stone-500">${s.desc}</p>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            } else if (activeTab === 'kia') {
+                container.innerHTML = `
+                    <div class="space-y-6 animate-in zoom-in-95 duration-300">
+                        <div class="bg-stone-900 aspect-square md:aspect-video rounded-[2.5rem] relative overflow-hidden shadow-2xl group">
+                            <div class="absolute inset-0 bg-[radial-gradient(circle,transparent_40%,black_100%)] opacity-60"></div>
+                            <div class="scan-line absolute w-full h-0.5 bg-sky-400 shadow-[0_0_20px_#38bdf8] z-20"></div>
+                            
+                            <div class="absolute inset-0 flex flex-col items-center justify-center p-8 text-center space-y-4">
+                                <i data-lucide="aperture" class="w-16 h-16 text-stone-700 animate-spin-slow"></i>
+                                <div class="space-y-1">
+                                    <p class="text-white font-black text-xs uppercase tracking-[0.3em]">Scanner Bio-Óptico</p>
+                                    <p class="text-stone-500 text-[10px] max-w-[200px]">Alinhe a saída de água para validar a pureza molecular.</p>
+                                </div>
+                            </div>
+                            
+                            <!-- UI de Lente -->
+                            <div class="absolute top-6 left-6 w-10 h-10 border-t-4 border-l-4 border-white/20 rounded-tl-xl"></div>
+                            <div class="absolute top-6 right-6 w-10 h-10 border-t-4 border-r-4 border-white/20 rounded-tr-xl"></div>
+                            <div class="absolute bottom-6 left-6 w-10 h-10 border-b-4 border-l-4 border-white/20 rounded-bl-xl"></div>
+                            <div class="absolute bottom-6 right-6 w-10 h-10 border-b-4 border-r-4 border-white/20 rounded-br-xl"></div>
+                        </div>
+
+                        <button id="scan-btn" onclick="runKiaScan()" class="w-full bg-stone-900 text-white font-black py-5 rounded-[2rem] shadow-xl hover:bg-stone-800 transition-all flex items-center justify-center gap-3">
+                            <i data-lucide="zap" class="text-amber-500"></i> VALIDAR QUALIDADE DA ÁGUA
+                        </button>
+                    </div>
+                `;
+            } else if (activeTab === 'impact') {
+                container.innerHTML = `
+                    <div class="space-y-6 animate-in fade-in duration-300">
+                        <div class="bg-stone-100 p-6 rounded-[2.5rem] border-2 border-dashed border-stone-200 space-y-4">
+                            <div class="flex justify-between items-start">
+                                <h2 class="font-black text-xl uppercase">Mapa de Rede</h2>
+                                <button onclick="navigator.geolocation.getCurrentPosition(p => alert('Localização Capturada!'))" class="text-[10px] font-black bg-white px-3 py-1.5 rounded-full shadow-sm border border-stone-200">ACTUALIZAR GPS</button>
+                            </div>
+                            <div class="h-48 bg-stone-200 rounded-3xl relative overflow-hidden">
+                                <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
+                                    <div class="w-12 h-12 bg-amber-500/20 rounded-full animate-ping absolute"></div>
+                                    <i data-lucide="map-pin" class="text-amber-600 relative z-10" size="32"></i>
+                                </div>
+                                <div class="absolute bottom-4 left-4 right-4 bg-white/90 backdrop-blur p-3 rounded-2xl flex justify-between items-center shadow-lg">
+                                    <span class="text-[10px] font-bold">Namibe, Angola</span>
+                                    <span class="text-[9px] text-emerald-600 font-black">UNIDADE ATIVA</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="grid grid-cols-2 gap-4">
+                            <div class="bg-amber-600 p-6 rounded-[2rem] text-white">
+                                <h4 class="text-[10px] font-black uppercase opacity-70">Impacto Directo</h4>
+                                <div class="text-3xl font-black mt-1">+540</div>
+                                <p class="text-[9px] font-bold uppercase mt-1">Vidas protegidas</p>
+                            </div>
+                            <div class="bg-stone-900 p-6 rounded-[2rem] text-white">
+                                <h4 class="text-[10px] font-black uppercase opacity-70">Selo Guardião</h4>
+                                <div class="text-3xl font-black mt-1">Luz</div>
+                                <p class="text-[9px] font-bold uppercase mt-1">Status de Evolução</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            lucide.createIcons();
+        }
+
+        // Init
+        window.onload = () => {
+            render();
+            // Simulação de GPS inicial
+            if ("geolocation" in navigator) {
+                navigator.geolocation.getCurrentPosition(() => console.log("GPS Pronto"));
+            }
+        };
+    </script>
+</body>
+</html>
